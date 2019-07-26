@@ -69,7 +69,7 @@ int main()
 
 
 	delete pixels;
-	for (auto x : Figures)
+	for (auto x : Figure::Figures)
 		delete x;
 	for (auto x : Lights)
 		delete x;
@@ -85,22 +85,11 @@ std::vector<vec3> raytrace(vec3 view, int width, int height)
 		for (int j = -width / 2; j <= width / 2; j++)
 		{
 			if (i == 0 || j == 0) continue;
-			float closest_t = INFINITY;
-			Figure * closest_figure = nullptr;
 			vec3 FOV(j, i, 0);
 			vec3 outColor(0, 0, 0);
+			float closest_t;
 
-			for (auto x : Figures)
-			{
-				std::vector<float> result = x->rayIntersect(FOV, view);
-				if (result.empty()) continue;
-				for(auto y : result)
-					if (y > 1 && y < UINT_MAX && y < closest_t)
-					{
-						closest_t = y;
-						closest_figure = x;
-					}
-			}
+			Figure * closest_figure = Figure::getIntersection(FOV, view, 1, INFINITY, closest_t);
 			if (closest_figure == nullptr) {
 				points.push_back(vec3(0, 0, 0));
 				continue;
@@ -109,8 +98,8 @@ std::vector<vec3> raytrace(vec3 view, int width, int height)
 			points.push_back(outColor);
 		}
 	}
+
 	return points;
-	//fclose(file);
 }
 
 

@@ -4,11 +4,35 @@ struct Figure
 {
 	vec3 color;
 	int32 spec;
+	static std::vector<Figure*> Figures;
 
 	Figure(vec3 _color, int32 _spec) : 
 		color(_color),
 		spec(_spec)
-	{}
+	{
+		Figure::Figures.push_back(this);
+	}
+
+	static Figure * getIntersection(vec3 FOV, vec3 view, float t_min, float t_max, float& t_out)
+	{
+		float closest_t = INFINITY;
+		Figure * closest_figure = nullptr;
+
+		for (auto x : Figures)
+		{
+			std::vector<float> result = x->rayIntersect(FOV, view);
+			if (result.empty()) continue;
+			for (auto y : result)
+				if (y > t_min && y < t_max && y < closest_t)
+				{
+					closest_t = y;
+					closest_figure = x;
+				}
+		}
+		t_out = closest_t;
+
+		return closest_figure;
+	}
 
 	virtual std::vector<float> rayIntersect(vec3 FOV, vec3 view) = 0;
 	virtual double calcLight(vec3 view, vec3 FOV, float t, std::vector<Light*> lights) = 0;
@@ -80,6 +104,10 @@ private:
 		vec3 N = (P - center);
 		N /= length(N);
 
+		float kek;
+		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
+			return i;
+
 		if (dot(N, L) > 0)
 			i += (dot(N, L) / (length(N) * length(L))) * light->intensity;
 
@@ -100,15 +128,21 @@ private:
 
 		vec3 P = (FOV - view) * t + view;
 		vec3 N = (P - center);
+		vec3 L = light->direction;
 		N /= length(N);
 
-		if (dot(N, light->direction) > 0)
-			i += (dot(N, light->direction) / (length(N) * length(light->direction))) * light->intensity;
+		float kek;
+		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
+			return i;
+
+		if (dot(N, L) > 0)
+			i += (dot(N, L) / (length(N) * length(L))) * light->intensity;
+
 
 		if (spec != -1)
 		{
 			vec3 V = view - FOV;
-			vec3 R = 2.0f * N * dot(N, light->direction) - light->direction;
+			vec3 R = 2.0f * N * dot(N, L) - L;
 			if (dot(R, V) > 0)
 				i += light->intensity * pow(dot(R, V) / (length(R)*length(V)), spec);
 		}
@@ -180,17 +214,24 @@ private:
 
 		vec3 P = (FOV - view) * t + view;
 		vec3 L = light->position - P;
-		vec3 N(ABC.x / glm::abs(ABC.x), ABC.y / glm::abs(ABC.y), ABC.z / glm::abs(ABC.z));
 
-		if (dot(N, L) > 0)
-			i += (dot(N, L) / (length(N) * length(L))) * light->intensity;
+		float kek;
+		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
+			return i;
+
+		vec3 N(ABC.x / glm::abs(ABC.x), ABC.y / glm::abs(ABC.y), ABC.z / glm::abs(ABC.z));
+		float N_dot_L = dot(N, L);
+
+		if (N_dot_L > 0)
+			i += (N_dot_L / (length(N) * length(L))) * light->intensity;
 
 		if (spec != -1)
 		{
 			vec3 V = view - FOV;
-			vec3 R = 2.0f * N * dot(N, L) - L;
-			if (dot(R, V) > 0)
-				i += light->intensity * pow(dot(R, V) / (length(R)*length(V)), spec);
+			vec3 R = 2.0f * N * N_dot_L - L;
+			float R_dot_V = dot(R, V);
+			if (R_dot_V > 0)
+				i += light->intensity * pow(R_dot_V / (length(R)*length(V)), spec);
 		}
 
 		return i;
@@ -202,16 +243,23 @@ private:
 
 		vec3 P = (FOV - view) * t + view;
 		vec3 N(ABC.x / glm::abs(ABC.x), ABC.y / glm::abs(ABC.y), ABC.z / glm::abs(ABC.z));
+		vec3 L = light->direction;
+		float N_dot_L = dot(N, L);
 
-		if (dot(N, light->direction) > 0)
-			i += (dot(N, light->direction) / (length(N) * length(light->direction))) * light->intensity;
+		float kek;
+		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
+			return i;
+
+		if (N_dot_L > 0)
+			i += (N_dot_L / (length(N) * length(L))) * light->intensity;
 
 		if (spec != -1)
 		{
 			vec3 V = view - FOV;
-			vec3 R = 2.0f * N * dot(N, light->direction) - light->direction;
-			if (dot(R, V) > 0)
-				i += light->intensity * pow(dot(R, V) / (length(R)*length(V)), spec);
+			vec3 R = 2.0f * N * N_dot_L - L;
+			float R_dot_V = dot(R, V);
+			if (R_dot_V > 0)
+				i += light->intensity * pow(R_dot_V / (length(R)*length(V)), spec);
 		}
 
 		return i;
