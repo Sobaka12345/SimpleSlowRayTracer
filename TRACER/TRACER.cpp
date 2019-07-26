@@ -3,8 +3,10 @@
 #include <sstream>
 #include <vector>
 #include <limits>
+#include <thread>
 
-
+//SFML
+#include <SFML/Graphics.hpp>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
@@ -19,7 +21,7 @@ using namespace glm;
 #include "data.h"
 
 
-void raytrace(vec3 view, int width, int height);
+std::vector<vec3> raytrace(vec3 view, int width, int height);
 vec3 setView(double angle);
 
 
@@ -32,25 +34,57 @@ int main()
 {
 	vec3 view = setView(ViewAngle);
 
-	std::vector<vec3> points;
+	std::vector<vec3> points(raytrace(view, Width, Height));
 
-	raytrace(view, Width, Height);
+	sf::RenderWindow window(sf::VideoMode(Width, Height), "TRACER");
 
+	sf::Uint8 * pixels = new sf::Uint8[Width*Height * 4];
+
+	sf::Texture texture;
+	texture.create(Width, Height);
+
+	sf::Sprite sprite(texture);
+
+	int counter = 0;
+	for (auto x : points)
+	{
+		pixels[counter++] = (int)x.x;
+		pixels[counter++] = (int)x.y;
+		pixels[counter++] = (int)x.z;
+		pixels[counter++] = 255;
+	}
+
+	texture.update(pixels);
+
+	while (window.isOpen()) {
+		sf::Event event;
+		while (window.pollEvent(event)) {
+			if (event.type == sf::Event::Closed)
+				window.close();
+		}
+		window.clear();
+		window.draw(sprite);
+		window.display();
+	}
+
+
+	delete pixels;
 	for (auto x : Figures)
 		delete x;
 	for (auto x : Lights)
 		delete x;
+		
 	return 0;
 }
 
-void raytrace(vec3 view, int width, int height)
+std::vector<vec3> raytrace(vec3 view, int width, int height)
 {
-	FILE * file = fopen("keak.ppm", "w+");
-	fprintf(file, "P3\n%d %d\n255\n", width + 1, height + 1);
+	std::vector<vec3> points;
 	for (int i = height / 2; i >= -height / 2; i--)
 	{
 		for (int j = -width / 2; j <= width / 2; j++)
 		{
+			if (i == 0 || j == 0) continue;
 			float closest_t = INFINITY;
 			Figure * closest_figure = nullptr;
 			vec3 FOV(j, i, 0);
@@ -68,16 +102,15 @@ void raytrace(vec3 view, int width, int height)
 					}
 			}
 			if (closest_figure == nullptr) {
-				fprintf(file, "%d %d %d\n", 0, 0, 0);
+				points.push_back(vec3(0, 0, 0));
 				continue;
 			}
 			outColor = closest_figure->color * float(closest_figure->calcLight(view, FOV, closest_t, Lights));
-			fprintf(file, "%d %d %d\n", (int)outColor.x, (int)outColor.y, (int)outColor.z);
-			//points.push_back(vec3(j / (Width * 0.5f), i / (Height * 0.5f), 0));
+			points.push_back(outColor);
 		}
 	}
-
-	fclose(file);
+	return points;
+	//fclose(file);
 }
 
 
