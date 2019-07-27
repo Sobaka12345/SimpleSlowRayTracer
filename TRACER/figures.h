@@ -4,11 +4,13 @@ struct Figure
 {
 	vec3 color;
 	int32 spec;
+	float reflective;
 	static std::vector<Figure*> Figures;
 
-	Figure(vec3 _color, int32 _spec) : 
+	Figure(vec3 _color, int32 _spec, float _reflective) :
 		color(_color),
-		spec(_spec)
+		spec(_spec),
+		reflective(_reflective)
 	{
 		Figure::Figures.push_back(this);
 	}
@@ -47,12 +49,12 @@ struct Figure
 		return vec3();
 	}
 
-	double calcLight(vec3 view, vec3 FOV, float t, std::vector<Light*> lights)
+	double calcLight(vec3 view, vec3 Dir, float t, std::vector<Light*> lights)
 	{
 		double i = 0;
 		for (auto x : lights)
 		{
-				i += calcLightPart(x, view, FOV, t);
+				i += calcLightPart(x, view, Dir, t);
 		}
 
 		return i > 1 ? 1 : i;
@@ -60,20 +62,25 @@ struct Figure
 
 	virtual std::vector<float> rayIntersect(vec3 Dir, vec3 view) = 0;
 
+	virtual vec3 reflectedRay(vec3 P, vec3 Dir)
+	{
+		vec3 N = getN(P);
+		vec3 R = -Dir;
+		return (2.0f*dot(N, R) * N) - R;
+	}
+
 protected:
-	double calcLightPart(Light * light, vec3 view, vec3 FOV, float t)
+	double calcLightPart(Light * light, vec3 view, vec3 Dir, float t)
 	{
 		if (light->getName() == "Ambient") return light->intensity;
 
 		double i = 0;
 
-		vec3 P = (FOV - view) * t + view;
+		vec3 P = (Dir) * t + view;
 		vec3 L = getL(light, P);
 		vec3 N = getN(P);
 
 		float kek;
-		//if (light->getName() == "Point")
-
 		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
 			return i;
 
@@ -83,7 +90,7 @@ protected:
 
 		if (spec != -1)
 		{
-			vec3 V = view - FOV;
+			vec3 V = -Dir;
 			vec3 R = 2.0f * N * N_dot_L - L;
 			float R_dot_V = dot(R, V);
 			if (R_dot_V > 0)
@@ -94,6 +101,7 @@ protected:
 	}
 
 	virtual vec3 getN(vec3 P) = 0;
+
 };
 
 struct Sphere : public Figure
@@ -101,8 +109,8 @@ struct Sphere : public Figure
 	vec3 center;
 	float32 radius;
 
-	Sphere(vec3 _center, float32 _radius, vec3 _color, int32 _spec):
-		Figure(_color, _spec),
+	Sphere(vec3 _center, float32 _radius, vec3 _color, int32 _spec, float _reflective):
+		Figure(_color, _spec, _reflective),
 		center(_center),
 		radius(_radius)
 	{}
@@ -134,7 +142,7 @@ struct Sphere : public Figure
 private:
 	vec3 getN(vec3 P) override
 	{
-		return P - center;
+		return (P - center) / length(P - center);
 	}
 };
 
@@ -144,7 +152,8 @@ struct Plane : public Figure
 	vec3 ABC;
 	double D;
 
-	Plane(vec3 point_1, vec3 point_2, vec3 point_3, vec3 _color, int32 _spec) : Figure(_color, _spec)
+	Plane(vec3 point_1, vec3 point_2, vec3 point_3, vec3 _color, int32 _spec, float _reflective) : 
+		Figure(_color, _spec, _reflective)
 	{
 		glm::mat2x2 M1(
 			vec2(point_2.y - point_1.y, point_2.z - point_1.z),
@@ -182,7 +191,10 @@ struct Plane : public Figure
 private:
 	vec3 getN(vec3 P) override
 	{
-		float mul = 1.0f / (ABC.x + ABC.y + ABC.z);
+		float sum = ABC.x + ABC.y + ABC.z;
+		if (sum == 0)
+			return vec3();
+		float mul = 1.0f / sum;
 		return -vec3(ABC.x, ABC.y, ABC.z) * mul;
 	}
 	

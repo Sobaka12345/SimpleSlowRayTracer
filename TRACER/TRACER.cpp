@@ -21,7 +21,8 @@ using namespace glm;
 #include "data.h"
 
 
-std::vector<vec3> raytrace(vec3 view, int width, int height);
+std::vector<vec3> render(vec3 view, int width, int height);
+vec3 raytrace(vec3 Dir, vec3 Origin, float min_t = 1.0f, float max_t = INFINITY, int depth = 3);
 vec3 setView(double angle);
 
 
@@ -34,7 +35,7 @@ int main()
 {
 	vec3 view = setView(ViewAngle);
 
-	std::vector<vec3> points(raytrace(view, Width, Height));
+	std::vector<vec3> points(render(view, Width, Height));
 
 	sf::RenderWindow window(sf::VideoMode(Width, Height), "TRACER");
 
@@ -77,7 +78,7 @@ int main()
 	return 0;
 }
 
-std::vector<vec3> raytrace(vec3 view, int width, int height)
+std::vector<vec3> render(vec3 view, int width, int height)
 {
 	std::vector<vec3> points;
 	for (int i = height / 2; i >= -height / 2; i--)
@@ -85,21 +86,38 @@ std::vector<vec3> raytrace(vec3 view, int width, int height)
 		for (int j = -width / 2; j <= width / 2; j++)
 		{
 			if (i == 0 || j == 0) continue;
-			vec3 FOV(j, i, 0);
-			vec3 outColor(0, 0, 0);
-			float closest_t;
-
-			Figure * closest_figure = Figure::getIntersection(FOV - view, view, 1, INFINITY, closest_t);
-			if (closest_figure == nullptr) {
-				points.push_back(vec3(0, 0, 0));
-				continue;
-			}
-			outColor = closest_figure->color * float(closest_figure->calcLight(view, FOV, closest_t, Lights));
-			points.push_back(outColor);
+			points.push_back(raytrace(vec3(j, i, 0) - view, view));
 		}
 	}
 
 	return points;
+}
+
+vec3 raytrace(vec3 Dir, vec3 Origin, float min_t, float max_t, int depth)
+{
+	vec3 outColor(0, 0, 0);
+
+	float closest_t;
+	Figure * closest_figure = Figure::getIntersection(Dir, Origin, min_t, max_t, closest_t);
+	if (closest_figure == nullptr) 
+		return outColor;
+
+
+	outColor = closest_figure->color * float(closest_figure->calcLight(Origin, Dir, closest_t, Lights));
+	
+	float r = closest_figure->reflective;
+	if (depth <= 0 || r <= 0)
+		return outColor;
+
+	vec3 P = Dir * closest_t + Origin;
+	vec3 R = closest_figure->reflectedRay(P, Dir);
+	//if(depth != 3)
+	//std::cout << R.x << " " << R.y << " " << R.z << "         " << Dir.x << " " << Dir.y << " " << Dir.z <<  "     " << depth << std::endl;
+
+	vec3 reflectedColor = raytrace(R, P, 0.001f, INFINITY, depth - 1);
+	//std::cout << reflectedColor.x << " " << reflectedColor.y << " " << reflectedColor.z << std::endl;
+
+	return outColor * (1.0f - r) + reflectedColor * r;
 }
 
 
