@@ -89,7 +89,7 @@ std::vector<vec3> raytrace(vec3 view, int width, int height)
 			vec3 outColor(0, 0, 0);
 			float closest_t;
 
-			Figure * closest_figure = Figure::getIntersection(FOV, view, 1, INFINITY, closest_t);
+			Figure * closest_figure = Figure::getIntersection(FOV - view, view, 1, INFINITY, closest_t);
 			if (closest_figure == nullptr) {
 				points.push_back(vec3(0, 0, 0));
 				continue;

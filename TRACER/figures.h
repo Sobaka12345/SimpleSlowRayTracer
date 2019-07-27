@@ -13,14 +13,14 @@ struct Figure
 		Figure::Figures.push_back(this);
 	}
 
-	static Figure * getIntersection(vec3 FOV, vec3 view, float t_min, float t_max, float& t_out)
+	static Figure * getIntersection(vec3 Dir, vec3 view, float t_min, float t_max, float& t_out)
 	{
 		float closest_t = INFINITY;
 		Figure * closest_figure = nullptr;
 
 		for (auto x : Figures)
 		{
-			std::vector<float> result = x->rayIntersect(FOV, view);
+			std::vector<float> result = x->rayIntersect(Dir, view);
 			if (result.empty()) continue;
 			for (auto y : result)
 				if (y > t_min && y < t_max && y < closest_t)
@@ -34,13 +34,66 @@ struct Figure
 		return closest_figure;
 	}
 
-	virtual std::vector<float> rayIntersect(vec3 FOV, vec3 view) = 0;
-	virtual double calcLight(vec3 view, vec3 FOV, float t, std::vector<Light*> lights) = 0;
+	static vec3 getL(Light * light, vec3 P)
+	{
+		std::string name = light->getName();
+		if (name == "Ambient")
+			return vec3();
+		else if (name == "Directional")
+			return -light->getVec();
+		else if (name == "Point")
+			return light->getVec() - P;
+
+		return vec3();
+	}
+
+	double calcLight(vec3 view, vec3 FOV, float t, std::vector<Light*> lights)
+	{
+		double i = 0;
+		for (auto x : lights)
+		{
+				i += calcLightPart(x, view, FOV, t);
+		}
+
+		return i > 1 ? 1 : i;
+	}
+
+	virtual std::vector<float> rayIntersect(vec3 Dir, vec3 view) = 0;
 
 protected:
-	virtual double calcAmbient(Ambient * light) { return light->intensity; };
-	virtual double calcPoint(Point * light, vec3 view, vec3 FOV, float t) = 0;
-	virtual double calcDirectional(Directional * light, vec3 view, vec3 FOV, float t) = 0;
+	double calcLightPart(Light * light, vec3 view, vec3 FOV, float t)
+	{
+		if (light->getName() == "Ambient") return light->intensity;
+
+		double i = 0;
+
+		vec3 P = (FOV - view) * t + view;
+		vec3 L = getL(light, P);
+		vec3 N = getN(P);
+
+		float kek;
+		//if (light->getName() == "Point")
+
+		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
+			return i;
+
+		float N_dot_L = dot(N, L);
+		if (N_dot_L > 0)
+			i += (N_dot_L / (length(N) * length(L))) * light->intensity;
+
+		if (spec != -1)
+		{
+			vec3 V = view - FOV;
+			vec3 R = 2.0f * N * N_dot_L - L;
+			float R_dot_V = dot(R, V);
+			if (R_dot_V > 0)
+				i += light->intensity * pow(R_dot_V / (length(R)*length(V)), spec);
+		}
+
+		return i;
+	}
+
+	virtual vec3 getN(vec3 P) = 0;
 };
 
 struct Sphere : public Figure
@@ -54,10 +107,10 @@ struct Sphere : public Figure
 		radius(_radius)
 	{}
 
-	virtual std::vector<float> rayIntersect(vec3 FOV, vec3 view) override
+	std::vector<float> rayIntersect(vec3 Dir, vec3 view) override
 	{
 		vec3  ViewToCenter = view - center;
-		vec3  ViewToFOV = FOV - view;
+		vec3  ViewToFOV = Dir;
 
 		double A = dot(ViewToFOV, ViewToFOV);
 		double B = dot(ViewToCenter, ViewToFOV) * 2.0;
@@ -78,76 +131,10 @@ struct Sphere : public Figure
 		return std::vector<float>{(float)x1, (float)x2};
 	}
 
-	virtual double calcLight(vec3 view, vec3 FOV, float t, std::vector<Light*> lights) override
-	{
-		double i = 0;
-		for (auto x : lights)
-		{
-			if (x->getName() == "Point")
-				i += calcPoint(dynamic_cast<Point*>(x), view, FOV, t);
-			else if (x->getName() == "Ambient")
-				i += calcAmbient(dynamic_cast<Ambient*>(x));
-			else if (x->getName() == "Directional")
-				i += calcDirectional(dynamic_cast<Directional*>(x), view, FOV, t);
-		}
-
-		return i > 1 ? 1 : i;
-	}
-
 private:
-	double calcPoint(Point * light, vec3 view, vec3 FOV, float t) override
+	vec3 getN(vec3 P) override
 	{
-		double i = 0;
-
-		vec3 P = (FOV - view) * t + view;
-		vec3 L = light->position - P;
-		vec3 N = (P - center);
-		N /= length(N);
-
-		float kek;
-		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
-			return i;
-
-		if (dot(N, L) > 0)
-			i += (dot(N, L) / (length(N) * length(L))) * light->intensity;
-
-		if (spec != -1)
-		{
-			vec3 V = view - FOV;
-			vec3 R = 2.0f * N * dot(N, L) - L;
-			if (dot(R, V) > 0)
-				i += light->intensity * pow(dot(R, V) / (length(R)*length(V)), spec);
-		}
-
-		return i;
-	}
-
-	double calcDirectional(Directional * light, vec3 view, vec3 FOV, float t) override
-	{
-		double i = 0;
-
-		vec3 P = (FOV - view) * t + view;
-		vec3 N = (P - center);
-		vec3 L = light->direction;
-		N /= length(N);
-
-		float kek;
-		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
-			return i;
-
-		if (dot(N, L) > 0)
-			i += (dot(N, L) / (length(N) * length(L))) * light->intensity;
-
-
-		if (spec != -1)
-		{
-			vec3 V = view - FOV;
-			vec3 R = 2.0f * N * dot(N, L) - L;
-			if (dot(R, V) > 0)
-				i += light->intensity * pow(dot(R, V) / (length(R)*length(V)), spec);
-		}
-
-		return i;
+		return P - center;
 	}
 };
 
@@ -180,9 +167,9 @@ struct Plane : public Figure
 		D = d;
 	}
 
-	virtual std::vector<float> rayIntersect(vec3 FOV, vec3 view) override
+	std::vector<float> rayIntersect(vec3 Dir, vec3 view) override
 	{
-		double val = dot(ABC, (FOV - view));
+		double val = dot(ABC, Dir);
 		if (val == 0)
 			return std::vector<float>();
 		double x = ((-1) * (dot(ABC, view) + D)) / val;
@@ -191,77 +178,12 @@ struct Plane : public Figure
 		return std::vector<float>{ (float)x };
 	}
 
-	virtual double calcLight(vec3 view, vec3 FOV, float t, std::vector<Light*> lights) override
-	{
-		double i = 0;
-		for (auto x : lights)
-		{
-			if (x->getName() == "Point")
-				i += calcPoint(dynamic_cast<Point*>(x), view, FOV, t);
-			else if (x->getName() == "Ambient")
-				i += calcAmbient(dynamic_cast<Ambient*>(x));
-			else if (x->getName() == "Directional")
-				i += calcDirectional(dynamic_cast<Directional*>(x), view, FOV, t);
-		}
-
-		return i > 1 ? 1 : i;
-	}
 
 private:
-	double calcPoint(Point * light, vec3 view, vec3 FOV, float t) override
+	vec3 getN(vec3 P) override
 	{
-		double i = 0;
-
-		vec3 P = (FOV - view) * t + view;
-		vec3 L = light->position - P;
-
-		float kek;
-		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
-			return i;
-
-		vec3 N(ABC.x / glm::abs(ABC.x), ABC.y / glm::abs(ABC.y), ABC.z / glm::abs(ABC.z));
-		float N_dot_L = dot(N, L);
-
-		if (N_dot_L > 0)
-			i += (N_dot_L / (length(N) * length(L))) * light->intensity;
-
-		if (spec != -1)
-		{
-			vec3 V = view - FOV;
-			vec3 R = 2.0f * N * N_dot_L - L;
-			float R_dot_V = dot(R, V);
-			if (R_dot_V > 0)
-				i += light->intensity * pow(R_dot_V / (length(R)*length(V)), spec);
-		}
-
-		return i;
+		float mul = 1.0f / (ABC.x + ABC.y + ABC.z);
+		return -vec3(ABC.x, ABC.y, ABC.z) * mul;
 	}
-
-	double calcDirectional(Directional * light, vec3 view, vec3 FOV, float t) override
-	{
-		double i = 0;
-
-		vec3 P = (FOV - view) * t + view;
-		vec3 N(ABC.x / glm::abs(ABC.x), ABC.y / glm::abs(ABC.y), ABC.z / glm::abs(ABC.z));
-		vec3 L = light->direction;
-		float N_dot_L = dot(N, L);
-
-		float kek;
-		if (getIntersection(L, P, 0.001f, INFINITY, kek) != nullptr)
-			return i;
-
-		if (N_dot_L > 0)
-			i += (N_dot_L / (length(N) * length(L))) * light->intensity;
-
-		if (spec != -1)
-		{
-			vec3 V = view - FOV;
-			vec3 R = 2.0f * N * N_dot_L - L;
-			float R_dot_V = dot(R, V);
-			if (R_dot_V > 0)
-				i += light->intensity * pow(R_dot_V / (length(R)*length(V)), spec);
-		}
-
-		return i;
-	}
+	
 };
